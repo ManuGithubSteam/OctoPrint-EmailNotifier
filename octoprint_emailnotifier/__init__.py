@@ -2,9 +2,12 @@
 from __future__ import absolute_import
 import os
 import octoprint.plugin
-import yagmail
+#import yagmail
+import os.path
 import flask
 import tempfile
+import subprocess
+
 from email.utils import formatdate
 
 from email.utils import formatdate
@@ -87,7 +90,7 @@ class EmailNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
 		tags = {'filename': filename, 'elapsed_time': elapsed_time}
 		subject = self._settings.get(["message_format", "title"]).format(**tags)
 		message = self._settings.get(["message_format", "body"]).format(**tags)
-		body = [message]
+		body = message
 		
 		try:
 			self.send_notification(subject, body, self._settings.get(['include_snapshot']))
@@ -127,8 +130,8 @@ class EmailNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
 	def on_api_command(self, command, data):
 		if command == "testmail":
 
-			subject = "OctoPrint Email Notifier Test"
-			body = ["If you received this email, your email notification configuration in OctoPrint is working as expected."]
+			subject = "OctoPrint Email Notifier Postfix Test"
+			body = "If you received this email, your email notification configuration in OctoPrint and postfix is working as expected."
 			snapshot = bool(data["snapshot"])
 
 			try:
@@ -148,9 +151,25 @@ class EmailNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
 
 	# Helper function to reduce code duplication.
 	# If snapshot == True, a webcam snapshot will be appended to body before sending.
-	def send_notification(self, subject="OctoPrint notification", body=[""], snapshot=True):
-
+	def send_notification(self, subject="OctoPrint notification", body="", snapshot=True):
+        
 		# If a snapshot is requested, let's grab it now.
+		m_file=""
+		m_username=self._settings.get(['mail_username'])
+		m_useralias=self._settings.get(['mail_useralias'])
+		m_email = self._settings.get(['recipient_address'])
+		m_message = self._settings.get(["message_format", "body"])
+		save_path = '/tmp/'
+		name_of_file = 'email'
+		completeName = os.path.join(save_path, name_of_file+".txt")
+		print m_useralias
+		print m_email
+		file1 = open(completeName, "w")
+		
+		file1.write( body + '\n')
+
+		file1.close()
+		
 		if snapshot:
 			snapshot_url = self._settings.global_get(["webcam", "snapshot"])
 			if snapshot_url:
@@ -160,16 +179,23 @@ class EmailNotifierPlugin(octoprint.plugin.EventHandlerPlugin,
 				except Exception as e:
 					self._logger.exception("Snapshot error (sending email notification without image): %s" % (str(e)))
 				else:
-					body.append(yagmail.inline(filename))
+					#body.append(yagmail.inline(filename))
+					m_file=filename
+					print m_file
+					
+		my_file = os.path.isfile(m_file)
+		print my_file
+		if my_file:
+			print "is file"
+			subprocess.call("cat /tmp/email.txt | mail -s '%s' %s -r '%s' -A %s" % (subject, m_email, m_useralias, m_file),shell=True)
+		else:
+			print "no file send email only"
+			subprocess.call("cat /tmp/email.txt | mail -s '%s' %s -r '%s'" % (subject, m_email, m_useralias),shell=True)
+			#subprocess.call("cat /tmp/email.txt | mail -t",shell=True)
+		
 
-		# Exceptions thrown by any of the following lines are intentionally not
-		# caught. The callers need to be able to handle them in different ways.
-		mailer = yagmail.SMTP(user={self._settings.get(['mail_username']):self._settings.get(['mail_useralias'])}, host=self._settings.get(['mail_server']),port=self._settings.get(['mail_server_port']), smtp_starttls=self._settings.get(['mail_server_tls']), smtp_ssl=self._settings.get(['mail_server_ssl']))
-		emails = [email.strip() for email in self._settings.get(['recipient_address']).split(',')]
-		mailer.send(to=emails, subject=subject, contents=body, headers={"Date": formatdate()})
 
-
-__plugin_name__ = "Email Notifier"
+__plugin_name__ = "Email Notifier Postfix"
 
 def __plugin_load__():
 	global __plugin_implementation__
